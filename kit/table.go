@@ -46,9 +46,12 @@ func (t *Table) Draw(c *screen.Canvas, top, left int, cols []Col, total int, row
 	}
 	c.Fill(top+1, left, 1, wide, '─', Dim)
 
-	shown := max(1, height)
-	if total > shown {
-		shown = max(1, shown-1) // the last row says how many more there are
+	if height <= 0 || total <= 0 {
+		return
+	}
+	shown := height
+	if total > shown && height > 1 {
+		shown-- // the last row says how many more there are
 	}
 	t.Cursor = max(0, min(t.Cursor, total-1))
 	t.first = min(t.first, t.Cursor)
@@ -74,7 +77,7 @@ func (t *Table) Draw(c *screen.Canvas, top, left int, cols []Col, total int, row
 			at += col.Width + 1
 		}
 	}
-	if more := total - t.first - shown; more > 0 {
+	if more := total - t.first - shown; more > 0 && height > shown {
 		c.Print(top+2+shown, left, "+"+strconv.Itoa(more)+" more", Dim)
 	}
 }

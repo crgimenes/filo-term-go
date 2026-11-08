@@ -23,6 +23,7 @@ type Menu struct {
 }
 
 func menuRows(n, ncols int) int {
+	ncols = max(1, ncols)
 	return max(1, (n+ncols-1)/ncols)
 }
 
@@ -48,10 +49,10 @@ func hot(c *screen.Canvas, row, col int, it Item, width int) int {
 	at := col
 	if unicode.ToLower(first) == unicode.ToLower(key) {
 		at += c.Print(row, at, word[:size], Hot)
-		at += c.Print(row, at, word[size:], Text)
+		at += c.Print(row, at, Cut(word[size:], width-(at-col)), Text)
 	} else {
 		at += c.Print(row, at, it.Key, Hot)
-		at += c.Print(row, at, " "+word, Text)
+		at += c.Print(row, at, Cut(" "+word, width-(at-col)), Text)
 	}
 	room := width - (at - col) - 3
 	rest = strings.TrimSpace(rest)
@@ -108,6 +109,7 @@ func mod(a, n int) int {
 // step walks drow inside the pointer's column, wrapping over its own items,
 // or dcol to another column, same row or that column's last.
 func (m *Menu) step(n, ncols, drow, dcol int) int {
+	ncols = max(1, ncols)
 	rows := menuRows(n, ncols)
 	r, col := m.At%rows, m.At/rows
 	columnLen := func(c int) int { return min(rows, n-c*rows) }

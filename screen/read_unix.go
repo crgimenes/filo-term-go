@@ -4,12 +4,21 @@ package screen
 
 import (
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"time"
 
 	"golang.org/x/sys/unix"
 )
+
+// checkFd refuses a descriptor past FD_SETSIZE, which an FdSet cannot hold.
+func checkFd(fd int) error {
+	if fd < 0 || fd >= unix.FD_SETSIZE {
+		return fmt.Errorf("terminal descriptor %d is out of select's range", fd)
+	}
+	return nil
+}
 
 // readQuiet waits up to d for input and reads what came; 0 bytes means the
 // line was quiet. select, not poll: macOS poll refuses terminal devices.

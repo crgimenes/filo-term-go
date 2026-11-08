@@ -5,6 +5,7 @@ package screen
 
 import (
 	"strings"
+	"unicode"
 	"unicode/utf8"
 )
 
@@ -23,6 +24,10 @@ var Plain = Pen{FG: Default, BG: Default}
 
 type Cell struct {
 	R rune
+	// Mark is a combining mark drawn over R (the accent of a decomposed
+	// "é"). yagni: one per cell, a stack of marks keeps its first; a ZWJ
+	// emoji sequence shows as its parts.
+	Mark rune
 	Pen
 }
 
@@ -90,7 +95,10 @@ func (c *Canvas) Print(row, col int, s string, p Pen) int {
 		}
 		w := runeWidth(r)
 		if w == 0 {
-			continue // a combining mark has no cell of its own; yagni: attach it
+			if unicode.In(r, unicode.Mn, unicode.Me) {
+				c.mark(row, at-1, r)
+			}
+			continue // a format character (ZWJ) would make the terminal join glyphs the grid keeps apart
 		}
 		if w == 2 && at+1 == c.W {
 			c.Set(row, at, Cell{R: ' ', Pen: p}) // half a wide glyph cannot show
@@ -104,6 +112,20 @@ func (c *Canvas) Print(row, col int, s string, p Pen) int {
 		at += w
 	}
 	return at - col
+}
+
+// mark puts r over the glyph that ends at col, unless it has one already.
+func (c *Canvas) mark(row, col int, r rune) {
+	if c.At(row, col).R == continuation {
+		col--
+	}
+	if row < 0 || col < 0 || row >= c.H || col >= c.W {
+		return
+	}
+	cell := &c.Cells[row*c.W+col]
+	if cell.Mark == 0 && cell.R != ' ' {
+		cell.Mark = r
+	}
 }
 
 // Fill paints a block of rows x cols with r.
@@ -132,6 +154,9 @@ func (c *Canvas) String() string {
 				continue
 			}
 			line = utf8.AppendRune(line, r)
+			if m := c.Cells[y*c.W+x].Mark; m != 0 {
+				line = utf8.AppendRune(line, m)
+			}
 		}
 		b.WriteString(strings.TrimRight(string(line), " "))
 		b.WriteByte('\n')

@@ -31,12 +31,16 @@ type Terminal struct {
 
 	mu     sync.Mutex // the reader holds it across one wait and one read
 	paused bool
+	closed bool
 
 	sizeMu sync.Mutex // apart from mu, so Size never waits out a read
 	w, h   int
 }
 
-var ErrNotTerminal = errors.New("not a terminal")
+var (
+	ErrNotTerminal = errors.New("not a terminal")
+	ErrClosed      = errors.New("terminal closed")
+)
 
 func Open() (*Terminal, error) {
 	t := &Terminal{
@@ -48,8 +52,12 @@ func Open() (*Terminal, error) {
 	if !term.IsTerminal(int(t.in.Fd())) || !term.IsTerminal(int(t.out.Fd())) {
 		return nil, ErrNotTerminal
 	}
+	err := checkFd(int(t.in.Fd()))
+	if err != nil {
+		return nil, err
+	}
 	t.r = NewRenderer(t.out)
-	err := t.enter()
+	err = t.enter()
 	if err != nil {
 		return nil, err
 	}
@@ -65,8 +73,11 @@ func (t *Terminal) enter() error {
 	}
 	t.old = old
 	_, err = t.out.WriteString("\x1b[?1049h\x1b[?7l\x1b[?25l")
+	if err != nil {
+		return errors.Join(err, t.leave()) // never hand back a terminal left raw
+	}
 	t.r.Invalidate()
-	return err
+	return nil
 }
 
 func (t *Terminal) leave() error {
@@ -77,11 +88,19 @@ func (t *Terminal) leave() error {
 	return err
 }
 
-// Close gives the terminal back as it was found.
+// Close gives the terminal back as it was found. It is safe to call more
+// than once, and from another goroutine (a signal handler).
 func (t *Terminal) Close() error {
-	close(t.done)
 	t.mu.Lock() // the reader is between reads, and will not read again
 	defer t.mu.Unlock()
+	if t.closed {
+		return nil
+	}
+	t.closed = true
+	close(t.done)
+	if t.paused {
+		return nil // Suspend already gave it back
+	}
 	return t.leave()
 }
 
@@ -89,18 +108,33 @@ func (t *Terminal) Close() error {
 // Resume; no key is read meanwhile, so none is stolen from it.
 func (t *Terminal) Suspend() error {
 	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed {
+		return ErrClosed
+	}
+	if t.paused {
+		return nil
+	}
 	t.paused = true
-	t.mu.Unlock()
 	return t.leave()
 }
 
 // Resume takes the terminal back; the next Draw repaints everything.
 func (t *Terminal) Resume() error {
-	err := t.enter()
 	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed {
+		return ErrClosed
+	}
+	if !t.paused {
+		return nil
+	}
+	err := t.enter()
+	if err != nil {
+		return err // still paused: nothing was taken back
+	}
 	t.paused = false
-	t.mu.Unlock()
-	return err
+	return nil
 }
 
 // Events closes when the terminal is gone (EOF, a hangup).
@@ -139,6 +173,10 @@ func (t *Terminal) loop() {
 		default:
 		}
 		t.mu.Lock()
+		if t.closed {
+			t.mu.Unlock()
+			return
+		}
 		if t.paused {
 			t.mu.Unlock()
 			time.Sleep(quiet)

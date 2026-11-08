@@ -97,6 +97,10 @@ func (d *Decoder) Feed(b byte, emit func(Key)) {
 		emit(KeyEsc)
 		// b goes on as ordinary input: Alt+x arrives as ESC, x
 	case 2:
+		if b == 0x1b { // a sequence cut short by the next one: start over
+			d.state = 1
+			return
+		}
 		if d.ss3 || (b >= 0x40 && b <= 0x7e) {
 			d.state = 0
 			k := csiKey(d.csi, b)
@@ -170,6 +174,9 @@ func csiKey(params []byte, final byte) Key {
 		}
 		if c < '0' || c > '9' {
 			return 0
+		}
+		if p[np] > 9999 {
+			return 0 // no key has a number that long; an overflow could alias one
 		}
 		p[np] = p[np]*10 + int(c-'0')
 	}

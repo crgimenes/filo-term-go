@@ -104,6 +104,10 @@ func (f *Form) Key(k screen.Key) string {
 	case screen.KeyDown, screen.KeyTab:
 		return f.move(1)
 	}
+	f.Focus = max(0, min(f.Focus, f.count()-1))
+	if f.count() == 0 {
+		return None
+	}
 	if !f.onField() {
 		if k == screen.KeyEnter || k == ' ' {
 			return f.button()
@@ -146,17 +150,23 @@ func (f *Form) turn(fd *Field, k screen.Key) string {
 	return Moved
 }
 
-// Height is the rows a form takes: its fields, a gap, the buttons.
+// Height is the rows a form takes: its fields, a gap, the buttons, and a
+// gap and the note when there is one.
 func (f *Form) Height() int {
-	if len(f.Fields) == 0 {
-		return 1
+	h := 1
+	if len(f.Fields) > 0 {
+		h += len(f.Fields) + 1
 	}
-	return len(f.Fields) + 2
+	if f.Note != "" {
+		h += 2
+	}
+	return h
 }
 
 // Draw paints the form from (top, left): labels right-aligned in labelw
 // cells, fields beside them, the buttons a row under the last field, and
-// the note under the buttons. Returns the row after the buttons.
+// the note, in the error colour, a row under the buttons. Returns the row
+// after the last thing drawn.
 func (f *Form) Draw(c *screen.Canvas, top, left, labelw int) int {
 	col := left + labelw
 	if labelw > 0 {
@@ -192,5 +202,10 @@ func (f *Form) Draw(c *screen.Canvas, top, left, labelw int) int {
 		}
 		at += c.Print(row, at, "  "+b+"  ", pen) + 2
 	}
-	return row + 1
+	row++
+	if f.Note != "" {
+		Note(c, row+1, col, c.W-col-1, Err, f.Note)
+		row += 2
+	}
+	return row
 }

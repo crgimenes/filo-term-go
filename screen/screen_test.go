@@ -2,6 +2,7 @@ package screen
 
 import (
 	"bytes"
+	"io"
 	"strconv"
 	"strings"
 	"testing"
@@ -216,5 +217,54 @@ func TestRendererIdleFrameIsFree(t *testing.T) {
 	_ = r.Draw(back)
 	if out.Len() != 0 {
 		t.Fatalf("an unchanged frame sent %q", out.Bytes())
+	}
+}
+
+func TestDecoderHostileInput(t *testing.T) {
+	if got := decode("\x1b[18446744073709551619~", false); len(got) != 0 {
+		t.Fatalf("an overflowing parameter became %x", got)
+	}
+	got := decode("\x1b[12\x1b[A", false)
+	if len(got) != 1 || got[0] != KeyUp {
+		t.Fatalf("ESC inside a sequence must start a new one: %x", got)
+	}
+}
+
+func TestCombiningMark(t *testing.T) {
+	c := New(6, 1)
+	n := c.Print(0, 0, "e\u0301x\u200d", Plain)
+	if n != 2 || c.String() != "e\u0301x\n" {
+		t.Fatalf("width %d, %q", n, c.String())
+	}
+	var out bytes.Buffer
+	r := NewRenderer(&out)
+	_ = r.Draw(c)
+	if !bytes.Contains(out.Bytes(), []byte("e\u0301x")) {
+		t.Fatalf("mark not sent: %q", out.Bytes())
+	}
+}
+
+type failWriter struct{ fail bool }
+
+func (w *failWriter) Write(p []byte) (int, error) {
+	if w.fail {
+		return 0, io.ErrShortWrite
+	}
+	return len(p), nil
+}
+
+func TestRendererRetriesAfterFailedWrite(t *testing.T) {
+	w := &failWriter{fail: true}
+	r := NewRenderer(w)
+	back := New(4, 1)
+	back.Print(0, 0, "x", Plain)
+	if r.Draw(back) == nil {
+		t.Fatal("write error swallowed")
+	}
+	var out bytes.Buffer
+	r.w = &out
+	_ = r.Draw(back)
+	if !bytes.Contains(out.Bytes(), []byte("x")) {
+		t.Fatalf("the lost frame was not sent again: %q", out.Bytes())
 	}
 }

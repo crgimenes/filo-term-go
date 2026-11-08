@@ -196,3 +196,50 @@ func TestTableWindow(t *testing.T) {
 		t.Fatalf("end:\n%s", got)
 	}
 }
+
+func TestDegenerateInputs(t *testing.T) {
+	c := screen.New(20, 4)
+	var m Menu
+	m.Draw(c, 0, 2, []Item{{"a", "Alpha"}}, 0, 10)
+	m.Key(screen.KeyDown, []Item{{"a", "Alpha"}}, 0)
+	m.Draw(c, 0, 2, nil, 0, 10)
+
+	f := NewForm(nil)
+	for _, k := range []screen.Key{screen.KeyEnter, ' ', screen.KeyDown, screen.KeyRight, screen.Ctrl('w')} {
+		if f.Key(k) == "" {
+			t.Fatal("empty answer")
+		}
+	}
+
+	var tb Table
+	rowOf := func(i int) []string { return []string{"r"} }
+	c = screen.New(10, 4)
+	tb.Draw(c, 0, 0, []Col{{"h", 3}}, 2, rowOf, 1)
+	if strings.Count(c.String(), "r") != 1 || strings.Contains(c.String(), "more") {
+		t.Fatalf("height 1 must take one row:\n%s", c)
+	}
+	c = screen.New(10, 4)
+	tb.Draw(c, 0, 0, []Col{{"h", 3}}, 2, rowOf, 0)
+	if strings.Contains(c.String(), "r\n") {
+		t.Fatalf("height 0 draws no rows:\n%s", c)
+	}
+}
+
+func TestFormDrawsItsNote(t *testing.T) {
+	f := NewForm([]Field{{Kind: TextField, Label: "Name", Width: 8}}, "Save")
+	f.Fail(0, "required")
+	c := screen.New(30, 6)
+	end := f.Draw(c, 0, 0, 4)
+	if !strings.Contains(c.String(), "required") || end != f.Height() {
+		t.Fatalf("end %d height %d\n%s", end, f.Height(), c)
+	}
+}
+
+func TestMenuLabelKeepsToItsColumn(t *testing.T) {
+	c := screen.New(20, 1)
+	var m Menu
+	m.Draw(c, 0, 2, []Item{{"a", "abcdefghij"}, {"b", "bb"}}, 2, 6)
+	if got := c.String(); got != "› abc…  bb\n" {
+		t.Fatalf("%q", got)
+	}
+}

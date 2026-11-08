@@ -65,6 +65,9 @@ func (r *Renderer) Draw(back *Canvas) error {
 			r.moveTo(y, x)
 			r.setPen(cell.Pen)
 			r.buf = utf8.AppendRune(r.buf, cell.R)
+			if cell.Mark != 0 {
+				r.buf = utf8.AppendRune(r.buf, cell.Mark)
+			}
 			r.col = x + runeWidth(cell.R)
 		}
 	}
@@ -90,6 +93,9 @@ func (r *Renderer) Draw(back *Canvas) error {
 		return nil // nothing changed: not even a reset is worth sending
 	}
 	_, err := r.w.Write(r.buf)
+	if err != nil {
+		r.full = true // the glass may hold any part of it: repaint next time
+	}
 	return err
 }
 

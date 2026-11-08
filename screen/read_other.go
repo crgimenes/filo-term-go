@@ -1,4 +1,4 @@
-//go:build !unix
+//go:build !unix && !windows
 
 package screen
 
@@ -18,10 +18,12 @@ var (
 	chunks     = make(chan chunk, 16)
 )
 
-// readQuiet without select: a goroutine blocks on the console and hands
-// over what it read. yagni: it keeps reading while Suspend has handed the
-// console to an editor; a cancelable console read fixes that when a Windows
-// user needs it.
+func checkFd(int) error { return nil }
+
+// readQuiet without select, for platforms with neither select nor a
+// waitable console: a goroutine blocks on the input and hands over what it
+// read. It keeps reading while Suspend has handed the terminal over; no
+// supported target uses this file.
 func readQuiet(f *os.File, buf []byte, d time.Duration) (int, error) {
 	readerOnce.Do(func() {
 		go func() {
